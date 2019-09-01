@@ -2,25 +2,21 @@ import numpy as np
 import os, fnmatch
 import matplotlib.pyplot as plt
 from keras import *
+from sklearn import metrics as M
 
-# General configurations
-dataset_path = '/media/tnnguyen/7E3B52AF2CE273C0/Thesis/Final-Thesis-Output/raster_imgs/CRSA/dataset/short_term/'
+#######################
+## Configure dataset ##
+#######################
+dataset_path = '/media/tnnguyen/7E3B52AF2CE273C0/Thesis/Final-Thesis-Output/raster_imgs/CRSA/dataset/medium_term'
 WD = {
     'input': {
-        'train' : {
-          'factors'    : dataset_path + '/train_2014/in_seq/',
-          'predicted'  : dataset_path + '/train_2014/out_seq/'    
-        },
         'test' : {
           'factors'    : dataset_path + '/test_2015/in_seq/',
           'predicted'  : dataset_path + '/test_2015/out_seq/'
-        }
-        
+        },
+    'model_weights' : './training_output/model/iteration_1.h5'
     },    
-    'output': {
-        'model_weights' : './training_output/model/weight.h5',
-        'plots'         : './training_output/monitor/'
-    }
+    'loss': './evaluation/medium.csv'
 }
 
 FACTOR = {
@@ -38,7 +34,15 @@ MAX_FACTOR = {
     'default'                 : 5000,
 }
 
-# Load training data
+print('Loading testing data...')
+testDataFiles = fnmatch.filter(os.listdir(WD['input']['test']['factors']), '*30.npz')
+testDataFiles.sort()
+numSamples = len(testDataFiles)
+print('Nunber of testing data = {0}'.format(numSamples))
+
+###########################################
+## Load data for training and evaluating ##
+###########################################
 def loadDataFile(path):
     try:
         data = np.load(path)
@@ -52,7 +56,7 @@ def appendFactorData(factorName, factorData, X):
     # Load data
     data = factorData[:, :, :, FACTOR[factorName]]
     data = np.expand_dims(data, axis=3)
-    data = np.expand_dims(data, axis=0)
+    data = np.swapaxes(data, 0, 3)
     
     if factorName == 'Input_accident':
         data[data > 0] = 1
@@ -68,7 +72,7 @@ def appendFactorData(factorName, factorData, X):
 
     return X
 
-def createBatch(batchSize, dataFiles, trainRatio=.8, mode='train'):
+def loadTestData(dataFiles, fileId):
     # Initalize data
     X = {}
     for key in FACTOR.keys():
@@ -76,52 +80,29 @@ def createBatch(batchSize, dataFiles, trainRatio=.8, mode='train'):
     
     y = {}
     y['default'] = None    
+
+    seqName = dataFiles[fileId]
     
-    numDataFiles = len(dataFiles)
-    i = 0
-    while i < batchSize:
-        fileId = np.random.randint(low=0, high=int(numDataFiles), size=1)
-        fileId = fileId[0]
+    factorData = loadDataFile(WD['input']['test']['factors'] + seqName)
+    predictedData = loadDataFile(WD['input']['test']['predicted'] + seqName)         
 
-        try:
-            seqName = dataFiles[fileId]
-            
-            factorData = loadDataFile(WD['input'][mode]['factors'] + seqName)
-            predictedData = loadDataFile(WD['input'][mode]['predicted'] + seqName)            
-                
-            if not (factorData is not None and predictedData is not None):
-                continue
-
-            # Load factors and predicted data
-            for key in FACTOR.keys():
-                X = appendFactorData(key, factorData, X)
-            
-            y = appendFactorData('default', predictedData, y)
-
-        except Exception:
-            continue
-        
-        i += 1
+    # Load factors and predicted data
+    for key in FACTOR.keys():
+        X = appendFactorData(key, factorData, X)
+    
+    y = appendFactorData('default', predictedData, y)
 
     del X['default']
     return X, y
 
-# longging
 def logging(mode, contentLine):
-    f = open(WD['output']['plots'] + 'loss_progress.csv', mode)
+    f = open(WD['loss'], mode)
     f.write(contentLine)
     f.close()
-    
-print('Loading testing data...')
-testDataFiles = fnmatch.filter(os.listdir(WD['input']['test']['factors']), '*30.npz')
-testDataFiles.sort()
-numSamples = len(testDataFiles)
-print('Nunber of testing data = {0}'.format(numSamples))
 
-###############################
-## Define model architecture ##
-###############################
-# Lower levels models
+##########################
+## Build learning model ##
+##########################
 def buildCNN(cnnInputs, imgShape, filters, kernelSize, factorName, isFusion=False, cnnOutputs=None):
     if isFusion == True:
         cnnInput = layers.add(cnnOutputs, name='Fusion_{0}'.format(factorName))
@@ -162,9 +143,7 @@ def buildPrediction(orgInputs, filters, kernelSize, lastOutputs=None):
     return predictionOutput
 
 def buildCompleteModel(imgShape, filtersDict, kernelSizeDict):
-    ########################################
-    ## Define a CNN model for each factor ##
-    ########################################
+    # Define architecture for learning individual factors
     filters = filtersDict['factors']
     kernelSize= kernelSizeDict['factors']
 
@@ -176,9 +155,7 @@ def buildCompleteModel(imgShape, filtersDict, kernelSizeDict):
     print(filtersCongestion)
     congestionCNNModel   = buildCNN(cnnInputs=None, imgShape=imgShape, filters=filtersCongestion, kernelSize=kernelSize, factorName='congestion')
 
-    #################################
-    ## Define the prediction model ##
-    #################################
+    # Define architecture for prediction layer
     filters = filtersDict['prediction']
     kernelSize= kernelSizeDict['prediction']
     predictionModel     = buildPrediction(orgInputs=[congestionCNNModel.input],
@@ -188,15 +165,28 @@ def buildCompleteModel(imgShape, filtersDict, kernelSizeDict):
                                          )            
 
     return predictionModel
-    
+
+###############################
+## Define model architecture ##
+###############################
 imgShape = (20,250,6)
 targetImgShape=(20,250,3)
 filtersDict = {}; filtersDict['factors'] = [256, 256, 128, 256, 256, 256, 128]; filtersDict['prediction'] = [64, targetImgShape[2]]
 kernelSizeDict = {}; kernelSizeDict['factors'] = (3,3); kernelSizeDict['prediction'] = (3,3)
 
 predictionModel = buildCompleteModel(imgShape, filtersDict, kernelSizeDict)
-predictionModel.load_weights(WD['output']['model_weights'])
+predictionModel.summary()
+utils.plot_model(predictionModel,to_file='architecture.png',show_shapes=True)
 
+#################################
+## Load weights for prediction ##
+#################################
+predictionModel = buildCompleteModel(imgShape, filtersDict, kernelSizeDict)
+predictionModel.load_weights(WD['input']['model_weights'])
+
+################
+## Evaluation ##
+################
 header = 'datetime,data_congestion,data_rainfall,data_accident,ground_truth,predicted,err_MSE,err_MAE'
 logging('w', header  + '\n')
 
@@ -204,8 +194,7 @@ start = 0
 numSamples = numSamples
 for fileId in range(start, numSamples):
     Xtest, ytest = loadTestData(testDataFiles, fileId)
-
-    ypredicted = predictionModel.predict(Xtest['Input_congestion'], 3)
+    ypredicted = predictionModel.predict(Xtest['Input_congestion'])
 
     datetime = testDataFiles[fileId].split('.')[0]
 
@@ -218,8 +207,8 @@ for fileId in range(start, numSamples):
     gt_congestion       = np.reshape(gt_congestion, (1, -1))
     pd_congestion       = np.reshape(pd_congestion, (1, -1))
 
-    error_MSE           = metrics.mean_squared_error(gt_congestion, pd_congestion)
-    error_MAE           = metrics.mean_absolute_error(gt_congestion, pd_congestion)
+    error_MSE           = M.mean_squared_error(gt_congestion, pd_congestion)
+    error_MAE           = M.mean_absolute_error(gt_congestion, pd_congestion)
     
     results = '{0},{1},{2},{3},\
                {4},{5},\

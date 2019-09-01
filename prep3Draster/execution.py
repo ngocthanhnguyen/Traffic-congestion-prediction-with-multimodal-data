@@ -70,7 +70,7 @@ def project(seq):
         if shiftedRow >= seq.shape[1] - PROJECTED_SEQUENCE['height']:
             shiftedRow = seq.shape[1] - PROJECTED_SEQUENCE['height']
 
-        outSeq[:, :PROJECTED_SEQUENCE['height'], shiftedCol, :] = seq[:, shiftedRow:shiftedRow + PROJECTED_SEQUENCE['height'], shiftedCol, :]
+        outSeq[:, :PROJECTED_SEQUENCE['height'], shiftedCol, :] = seq[:, shiftedRow-PROJECTED_SEQUENCE['height']:shiftedRow, shiftedCol, :]
 
     return outSeq
 

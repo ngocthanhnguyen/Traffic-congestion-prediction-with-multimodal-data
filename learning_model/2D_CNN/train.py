@@ -3,7 +3,9 @@ import os, fnmatch
 import matplotlib.pyplot as plt
 from keras import *
 
-# General configurations
+#######################
+## Configure dataset ##
+#######################
 dataset_path = '/media/tnnguyen/7E3B52AF2CE273C0/Thesis/Final-Thesis-Output/raster_imgs/CRSA/dataset/short_term/'
 WD = {
     'input': {
@@ -38,7 +40,22 @@ MAX_FACTOR = {
     'default'                 : 5000,
 }
 
-# Load training data
+# Get the list of factors data files
+print('Loading training data...')
+trainDataFiles = fnmatch.filter(os.listdir(WD['input']['train']['factors']), '*30.npz')
+trainDataFiles.sort()
+numSamples = len(trainDataFiles)
+print('Nunber of training data = {0}'.format(numSamples))
+
+print('Loading testing data...')
+testDataFiles = fnmatch.filter(os.listdir(WD['input']['test']['factors']), '*30.npz')
+testDataFiles.sort()
+numSamples = len(testDataFiles)
+print('Nunber of testing data = {0}'.format(numSamples))
+
+###########################################
+## Load data for training and evaluating ##
+###########################################
 def loadDataFile(path):
     try:
         data = np.load(path)
@@ -52,7 +69,7 @@ def appendFactorData(factorName, factorData, X):
     # Load data
     data = factorData[:, :, :, FACTOR[factorName]]
     data = np.expand_dims(data, axis=3)
-    data = np.expand_dims(data, axis=0)
+    data = np.swapaxes(data, 0, 3)
     
     if factorName == 'Input_accident':
         data[data > 0] = 1
@@ -68,7 +85,7 @@ def appendFactorData(factorName, factorData, X):
 
     return X
 
-def createBatch(batchSize, dataFiles, trainRatio=.8, mode='train'):
+def createBatch(batchSize, dataFiles, mode='train'):
     # Initalize data
     X = {}
     for key in FACTOR.keys():
@@ -106,17 +123,13 @@ def createBatch(batchSize, dataFiles, trainRatio=.8, mode='train'):
     del X['default']
     return X, y
 
-# logging training progress
-def logTrainingProgress(mode, contentLine):
-    f = open(WD['output']['plots'] + 'loss_progress.csv', mode)
-    f.write(contentLine)
-    f.close()
-
-# MSE
+# loss function: MSE
 def mean_squared_error_eval(y_true, y_pred):
     return backend.eval(backend.mean(backend.square(y_pred - y_true)))
     
-# Lower levels models
+##########################
+## Build learning model ##
+##########################
 def buildCNN(cnnInputs, imgShape, filters, kernelSize, factorName, isFusion=False, cnnOutputs=None):
     if isFusion == True:
         cnnInput = layers.add(cnnOutputs, name='Fusion_{0}'.format(factorName))
@@ -157,9 +170,7 @@ def buildPrediction(orgInputs, filters, kernelSize, lastOutputs=None):
     return predictionOutput
 
 def buildCompleteModel(imgShape, filtersDict, kernelSizeDict):
-    ########################################
-    ## Define a CNN model for each factor ##
-    ########################################
+    # Define architecture for learning individual factors
     filters = filtersDict['factors']
     kernelSize= kernelSizeDict['factors']
 
@@ -171,9 +182,7 @@ def buildCompleteModel(imgShape, filtersDict, kernelSizeDict):
     print(filtersCongestion)
     congestionCNNModel   = buildCNN(cnnInputs=None, imgShape=imgShape, filters=filtersCongestion, kernelSize=kernelSize, factorName='congestion')
 
-    #################################
-    ## Define the prediction model ##
-    #################################
+    # Define architecture for prediction layer
     filters = filtersDict['prediction']
     kernelSize= kernelSizeDict['prediction']
     predictionModel     = buildPrediction(orgInputs=[congestionCNNModel.input],
@@ -183,22 +192,6 @@ def buildCompleteModel(imgShape, filtersDict, kernelSizeDict):
                                          )            
 
     return predictionModel
-
-# Get the list of factors data files
-print('Loading training data...')
-trainDataFiles = fnmatch.filter(os.listdir(WD['input']['train']['factors']), '*30.npz')
-trainDataFiles.sort()
-numSamples = len(trainDataFiles)
-print('Nunber of training data = {0}'.format(numSamples))
-
-print('Loading testing data...')
-testDataFiles = fnmatch.filter(os.listdir(WD['input']['test']['factors']), '*30.npz')
-testDataFiles.sort()
-numSamples = len(testDataFiles)
-print('Nunber of testing data = {0}'.format(numSamples))
-
-batchSize = 1
-numIterations = 45000
 
 ###############################
 ## Define model architecture ##
@@ -212,15 +205,17 @@ predictionModel = buildCompleteModel(imgShape, filtersDict, kernelSizeDict)
 predictionModel.summary()
 utils.plot_model(predictionModel,to_file='architecture.png',show_shapes=True)
 
-from tensorflow.contrib.opt import LazyAdamOptimizer
+##################################
+## Configuring learning process ##
+##################################
+batchSize = 1
+numIterations = 45000
 
-tfopt = LazyAdamOptimizer()
 lr = 5e-5
 predictionModel.compile(optimizer=optimizers.Adam(lr=lr, decay=1e-5),
                         loss='mse',
                         metrics=['mse']
                        )
-print('After configuring model...')
 
 ##############
 ## Training ##
@@ -254,15 +249,16 @@ for iteration in range(start, numIterations):
     }
 
     for tag, value in train_info.items():
-        train_logger.scalar_summary(tag, value, step=epoch)
+        train_logger.scalar_summary(tag, value, step=iteration)
     for tag, value in test_info.items():
-        test_logger.scalar_summary(tag, value, step=epoch)
+        test_logger.scalar_summary(tag, value, step=iteration)
     
     trainLosses.append(trainLoss[0])
     testLosses.append(testLoss)    
+    print(iteration, trainLoss[0], testLoss)
     
     # save model checkpoint
-    if iteration % 100 == 0:   
+    if iteration % 1 == 0:   
         # save model weight
         predictionModel.save_weights(WD['output']['model_weights'] \
-                                     + 'epoch_' + str(iteration) + '.h5')
+                                     + 'iteration_' + str(iteration) + '.h5')
