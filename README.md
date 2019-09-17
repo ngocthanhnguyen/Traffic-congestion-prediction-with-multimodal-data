@@ -1,4 +1,4 @@
-# The github repository storing source code presented in "Complex Event Analysis for Traffic Risk Predictionbased on 3D-CNN with Multi-sources Urban Sensing Data" paper.
+# The github repository storing source code presented in "Complex Event Analysis for Traffic Risk Prediction based on 3D-CNN with Multi-sources Urban Sensing Data" paper.
 
 ### Repository structure ###
 * timeseries2raster: the algorithm to convert sensing data stored in time-series format to raster images.
