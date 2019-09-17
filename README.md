@@ -6,8 +6,6 @@
 * learning_model: 
     * Historical_Average: a statistical model to predict infomation based on its historical data.
         * predict.py: to predict data
-    * ARIMA: a statistical model to predict infomation based on its historical data.
-        * predict.py: to predict data
     * 2D_CNN: a deep learning model to predict information by preserving spartial orders using 2D-CNN.
         * train.py: to train the model
         * predict.py: to predict data
