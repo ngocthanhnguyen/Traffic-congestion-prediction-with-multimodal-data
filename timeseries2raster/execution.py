@@ -105,7 +105,7 @@ if __name__ == "__main__":
     # ============================================ #
     # Needed columns for extraction
     col_name = ['datetime', 'meshcode', 'rainfall', 'numsegments', 'congestion', 'accident']    
-    col_idx  = [1         , 2         , 5         , 6            , 10          , 15        ]
+    col_idx  = [1         , 2         , 5         , 6            , 9           , 15        ]
     target_col = len(col_name) - 1
 
     # ============================================ #
