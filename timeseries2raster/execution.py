@@ -17,6 +17,9 @@ def parse_data(dp, data, col_conf, target_col):
     data = dp.removeDelimiters(data, col_conf.index('datetime'), ('-', ' ', ':', '+09'))    
     data = dp.convertInt(data, col_conf.index('datetime'))
 
+    # list factors    
+    data = dp.countElements(data, col_conf.index('numsegments'), ',')
+
     # integer factors
     data = dp.convertInt(data, col_conf.index('meshcode'))
     data = dp.convertInt(data, col_conf.index('rainfall'))
@@ -80,7 +83,7 @@ def generate_factor_map(path, data, num_factors, col_conf, factor_config):
                 continue
             
             # assign sensing data to corresponding location on raster image
-            congestion = data[j, col_conf.index('congestion')]
+            congestion = data[j, col_conf.index('congestion')] * data[j, col_conf.index('numsegments')]
             rainfall = data[j, col_conf.index('rainfall')]
             accident = data[j, col_conf.index('accident')]
             if accident > 0:
@@ -101,8 +104,8 @@ def generate_factor_map(path, data, num_factors, col_conf, factor_config):
 if __name__ == "__main__":
     # ============================================ #
     # Needed columns for extraction
-    col_name = ['datetime', 'meshcode', 'rainfall', 'congestion', 'accident']    
-    col_idx  = [1         , 2         , 5         , 10          , 15        ]
+    col_name = ['datetime', 'meshcode', 'rainfall', 'numsegments', 'congestion', 'accident']    
+    col_idx  = [1         , 2         , 5         , 6            , 10          , 15        ]
     target_col = len(col_name) - 1
 
     # ============================================ #
